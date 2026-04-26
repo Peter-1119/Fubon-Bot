@@ -69,7 +69,7 @@ gcloud run deploy fubon-bot --source . --region asia-east1 --allow-unauthenticat
 
 ## 📱 Bot Commands
 | **Command** | **Environment** | **Description** |
-| --- | --- |
+| --- | --- | --- |
 | `[SETUP_PASSWORD]` | 1-on-1 Chat| Binds the user as the system Administrator. |
 | `更新帳密 [account] [password]` | 1-on-1 Chat | Updates the Fubon system login credentials (Admin only). |
 | `補發業績 / 補發賀報 / 補發薪資` | 1-on-1 Chat | Manually triggers specific reports to the designated groups. |
