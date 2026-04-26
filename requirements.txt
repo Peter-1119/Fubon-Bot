@@ -1,0 +1,10 @@
+flask
+requests
+beautifulsoup4
+pycryptodome
+numpy
+opencv-python-headless
+python-dotenv
+google-cloud-storage
+gunicorn
+google-cloud-storage

@@ -1,0 +1,25 @@
+# --- 私密與環境變數 (絕對不能上傳) ---
+.env
+*.env
+fubon_cookies.pkl
+
+# --- 本地測試產生的 JSON 資料 ---
+group_settings.json
+congrats_history.json
+
+# --- Python 緩衝與編譯檔案 ---
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv
+env/
+venv/
+ENV/
+
+# --- Docker 相關 ---
+.docker/
+
+# --- 作業系統暫存 ---
+.DS_Store
+Thumbs.db
