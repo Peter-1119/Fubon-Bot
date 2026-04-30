@@ -6,6 +6,7 @@ fubon_cookies.pkl
 # --- 本地測試產生的 JSON 資料 ---
 group_settings.json
 congrats_history.json
+payloads.json
 
 # --- Python 緩衝與編譯檔案 ---
 __pycache__/

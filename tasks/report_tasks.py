@@ -18,7 +18,8 @@ def save_memory(data):
 
 def task_check_performance(bot, mode="all"):
     """Task 1, 2, 3: 績效邏輯優化與記憶過濾"""
-    html_string = bot.fetch_api_html("/SAVLife/Item0028/Query", payloads.get_performance_params())
+    html_string = bot.fetch_api_html("/SAVLife/Item0028/Query", payloads.get_performance_params(bot))
+    
     table_data = extract_table_data(html_string, target_class='report-table')
     
     memory = get_memory()
@@ -26,7 +27,7 @@ def task_check_performance(bot, mode="all"):
     if memory.get("month") != current_month:
         memory = {"month": current_month, "sent_names": []} # 換月自動清空紀錄
         
-    res = {"warnings": [], "congrats": [], "big_congrats": []}
+    res = {"warnings": [], "congrats": [], "big_congrats": [], "congrats_raw": [], "big_congrats_raw": []}
 
     for row in table_data:
         if len(row) < 11: continue
@@ -40,7 +41,7 @@ def task_check_performance(bot, mode="all"):
 
         if name == supervisor:
             # Task 1: 主管警告 (加入記憶過濾，每月只警告一次)
-            if mode in ["all", "warning"] and perf_val < 30000:
+            if mode in ["all", "warning"] and perf_val < 20000:
                 mem_key = f"{name}_warning"
                 if mem_key not in memory["sent_names"]:
                     res["warnings"].append(f"⚠️ 主管 {name} 累積業績 {perf_val:,} 元 (未達3萬)")
@@ -52,11 +53,13 @@ def task_check_performance(bot, mode="all"):
                     mem_key = f"{name}_10w"
                     if mem_key not in memory["sent_names"]:
                         res["big_congrats"].append(f"🎉 大賀報！恭喜 {name} 突破 10 萬大關！累積：{perf_val:,}")
+                        res["big_congrats_raw"].append({"name": name, "fyc": perf_val}) # <--- 加這行
                         memory["sent_names"].append(mem_key)
-                elif perf_val >= 30000:
+                elif perf_val >= 20000:
                     mem_key = f"{name}_3w"
                     if mem_key not in memory["sent_names"]:
                         res["congrats"].append(f"🎊 小賀報！恭喜 {name} 達成富邦之星(3萬)！累積：{perf_val:,}")
+                        res["congrats_raw"].append({"name": name, "fyc": perf_val}) # <--- 加這行
                         memory["sent_names"].append(mem_key)
 
     # 不論是警告還是賀報，只要有檢查，就存回記憶體

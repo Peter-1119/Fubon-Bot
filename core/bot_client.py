@@ -246,3 +246,15 @@ class FubonAutoBot:
             
         return None
 
+    def fetch_api_data(self, endpoint, payload):
+        """
+        最純粹的 API 請求，專門用來抓取未經處理的原始回應字串。
+        適用於分析 InitUnitList 等含有亂碼指令的封包。
+        """
+        resp = self._post_sys_exec(endpoint, payload)
+        if resp.status_code != 200:
+            print(f"[失敗] 伺服器回傳狀態碼: {resp.status_code}")
+            return "[]"
+            
+        return resp.text
+    

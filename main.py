@@ -1,12 +1,13 @@
-import os
+import os, tempfile
 from datetime import datetime
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_file
 
 from config import SETUP_PASSWORD
 from core.bot_client import FubonAutoBot
 from core.storage import read_json, write_json
 from core import line_notifier
 import tasks.report_tasks as tasks
+from core.image_maker import generate_local_congrats
 
 app = Flask(__name__)
 bot_instance = None
@@ -223,11 +224,32 @@ def run_master_cron():
 
         if weekday == 2:
             res = tasks.task_check_performance(bot, mode="congrats")
-            if (res.get("congrats") or res.get("big_congrats")) and staff_group:
+            print(res)
+            
+            if (res.get("congrats_raw") or res.get("big_congrats_raw")) and staff_group:
+                # 1. 發送總表文字
                 congrats_list = res.get("big_congrats", []) + res.get("congrats", [])
                 msg = "🏆【本週富邦之星賀報】\n" + "\n".join(congrats_list)
                 line_notifier.send_line_message(staff_group, msg)
-            report_log.append("執行週三職員賀報")
+                
+                # 自動取得目前的基礎網址 (本地端通常是 http://127.0.0.1:8080，雲端則是 https://fubon-xxx.run.app)
+                # 使用 ngrok 測試時，這會自動抓到 ngrok 的 https 網址！
+                # base_url = request.host_url.rstrip('/')
+                base_url = request.host_url.replace("http://", "https://").rstrip('/')
+                
+                # 2. 針對每個人產生專屬圖片並發送
+                all_heroes = res.get("big_congrats_raw", []) + res.get("congrats_raw", [])
+                for hero in all_heroes:
+                    filename = generate_local_congrats(hero["name"], hero["fyc"])
+                    if filename:
+                        # 拼湊成完整的網址！
+                        image_url = f"{base_url}/images/{filename}"
+                        print(f"[系統] 準備發送圖片網址: {image_url}")
+                        
+                        cheer_msg = f"恭喜 {hero['name']} 達成佳績！🔥"
+                        line_notifier.send_line_image(staff_group, image_url, text_message=cheer_msg)
+                        
+                report_log.append("執行週三職員賀報 (含圖片推播)")
 
         if day == 15:
             res = tasks.task_yearly_bonus(bot)
@@ -254,6 +276,24 @@ def run_master_cron():
             report_log.append("執行平日出缺席檢查")
 
     return jsonify({"status": "cron_finished", "test_time": {"hour": hour, "weekday": weekday, "day": day}, "logs": report_log})
+
+# ----- 讓 LINE 來抓圖片的專屬 API -----
+@app.route('/images/<filename>', methods=['GET'])
+def serve_image(filename):
+    """
+    這是一個對外公開的網址，例如: https://你的網域/images/congrats_abc.jpg
+    當 LINE 伺服器來請求時，Flask 會把暫存區的圖丟給它。
+    """
+    # 確保只允許抓取 congrats_ 開頭的圖片，防止安全漏洞 (Directory Traversal)
+    if not filename.startswith("congrats_") or not filename.endswith(".jpg"):
+        return "Invalid file request", 400
+
+    temp_dir = tempfile.gettempdir()
+    file_path = os.path.join(temp_dir, filename)
+    
+    if os.path.exists(file_path):
+        return send_file(file_path, mimetype='image/jpeg')
+    return "Image not found or expired", 404
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
