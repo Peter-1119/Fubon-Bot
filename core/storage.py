@@ -1,5 +1,4 @@
-import os
-import json
+import os, io, json, tempfile
 
 # 判斷當前環境，預設為 development
 APP_ENV = os.getenv("APP_ENV", "development")
@@ -52,3 +51,34 @@ def write_json(filename, data):
         _gcs_write(filename, data)
     else:
         _local_write(filename, data)
+
+def upload_image_to_gcs(image_object, filename):
+    """
+    將 Pillow 的 Image 物件直接上傳到 GCS，不落地(不存入本地硬碟)。
+    回傳該圖片的公開 HTTPS 網址。
+    """
+    if APP_ENV != "production":
+        # 本地測試時，還是可以存一份在本地端方便查看
+        temp_path = os.path.join(tempfile.gettempdir(), filename)
+        image_object.save(temp_path, format="JPEG", quality=90)
+        return f"http://127.0.0.1:8080/images/{filename}" # 測試用的假網址
+
+    from google.cloud import storage
+    try:
+        client = storage.Client()
+        bucket = client.bucket(BUCKET_NAME)
+        blob = bucket.blob(f"images/{filename}") # 存在 images/ 資料夾下
+        
+        # 將圖片轉換為二進位流 (Byte Stream)
+        byte_stream = io.BytesIO()
+        image_object.save(byte_stream, format="JPEG", quality=90)
+        byte_stream.seek(0)
+        
+        # 上傳到 GCS
+        blob.upload_from_file(byte_stream, content_type="image/jpeg")
+        
+        # 回傳 GCS 的絕對網址給 LINE 讀取
+        return f"https://storage.googleapis.com/{BUCKET_NAME}/images/{filename}"
+    except Exception as e:
+        print(f"[GCS] 上傳圖片 {filename} 失敗: {e}")
+        return None

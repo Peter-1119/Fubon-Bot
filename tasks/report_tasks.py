@@ -41,7 +41,7 @@ def task_check_performance(bot, mode="all"):
 
         if name == supervisor:
             # Task 1: 主管警告 (加入記憶過濾，每月只警告一次)
-            if mode in ["all", "warning"] and perf_val < 20000:
+            if mode in ["all", "warning"] and perf_val < 30000:
                 mem_key = f"{name}_warning"
                 if mem_key not in memory["sent_names"]:
                     res["warnings"].append(f"⚠️ 主管 {name} 累積業績 {perf_val:,} 元 (未達3萬)")
@@ -53,13 +53,13 @@ def task_check_performance(bot, mode="all"):
                     mem_key = f"{name}_10w"
                     if mem_key not in memory["sent_names"]:
                         res["big_congrats"].append(f"🎉 大賀報！恭喜 {name} 突破 10 萬大關！累積：{perf_val:,}")
-                        res["big_congrats_raw"].append({"name": name, "fyc": perf_val}) # <--- 加這行
+                        res["big_congrats_raw"].append({"name": name, "fyc": perf_val})
                         memory["sent_names"].append(mem_key)
-                elif perf_val >= 20000:
+                elif perf_val >= 30000:
                     mem_key = f"{name}_3w"
                     if mem_key not in memory["sent_names"]:
                         res["congrats"].append(f"🎊 小賀報！恭喜 {name} 達成富邦之星(3萬)！累積：{perf_val:,}")
-                        res["congrats_raw"].append({"name": name, "fyc": perf_val}) # <--- 加這行
+                        res["congrats_raw"].append({"name": name, "fyc": perf_val})
                         memory["sent_names"].append(mem_key)
 
     # 不論是警告還是賀報，只要有檢查，就存回記憶體

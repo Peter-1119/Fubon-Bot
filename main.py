@@ -224,31 +224,20 @@ def run_master_cron():
 
         if weekday == 2:
             res = tasks.task_check_performance(bot, mode="congrats")
-            print(res)
-            
             if (res.get("congrats_raw") or res.get("big_congrats_raw")) and staff_group:
                 # 1. 發送總表文字
                 congrats_list = res.get("big_congrats", []) + res.get("congrats", [])
                 msg = "🏆【本週富邦之星賀報】\n" + "\n".join(congrats_list)
                 line_notifier.send_line_message(staff_group, msg)
                 
-                # 自動取得目前的基礎網址 (本地端通常是 http://127.0.0.1:8080，雲端則是 https://fubon-xxx.run.app)
-                # 使用 ngrok 測試時，這會自動抓到 ngrok 的 https 網址！
-                # base_url = request.host_url.rstrip('/')
-                base_url = request.host_url.replace("http://", "https://").rstrip('/')
-                
-                # 2. 針對每個人產生專屬圖片並發送
+                # 2. 針對每個人產生圖片並發送 (現在 image_maker 直接回傳網址了)
                 all_heroes = res.get("big_congrats_raw", []) + res.get("congrats_raw", [])
                 for hero in all_heroes:
-                    filename = generate_local_congrats(hero["name"], hero["fyc"])
-                    if filename:
-                        # 拼湊成完整的網址！
-                        image_url = f"{base_url}/images/{filename}"
-                        print(f"[系統] 準備發送圖片網址: {image_url}")
-                        
+                    image_url = generate_local_congrats(hero["name"], hero["fyc"])
+                    if image_url:
                         cheer_msg = f"恭喜 {hero['name']} 達成佳績！🔥"
                         line_notifier.send_line_image(staff_group, image_url, text_message=cheer_msg)
-                        
+                
                 report_log.append("執行週三職員賀報 (含圖片推播)")
 
         if day == 15:
