@@ -266,24 +266,6 @@ def run_master_cron():
 
     return jsonify({"status": "cron_finished", "test_time": {"hour": hour, "weekday": weekday, "day": day}, "logs": report_log})
 
-# ----- 讓 LINE 來抓圖片的專屬 API -----
-@app.route('/images/<filename>', methods=['GET'])
-def serve_image(filename):
-    """
-    這是一個對外公開的網址，例如: https://你的網域/images/congrats_abc.jpg
-    當 LINE 伺服器來請求時，Flask 會把暫存區的圖丟給它。
-    """
-    # 確保只允許抓取 congrats_ 開頭的圖片，防止安全漏洞 (Directory Traversal)
-    if not filename.startswith("congrats_") or not filename.endswith(".jpg"):
-        return "Invalid file request", 400
-
-    temp_dir = tempfile.gettempdir()
-    file_path = os.path.join(temp_dir, filename)
-    
-    if os.path.exists(file_path):
-        return send_file(file_path, mimetype='image/jpeg')
-    return "Image not found or expired", 404
-
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
