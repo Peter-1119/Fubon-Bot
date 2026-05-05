@@ -121,23 +121,42 @@ def callback():
 
                         if text == "補發業績":
                             res = tasks.task_check_performance(bot, mode="warning")
-                            if res["warnings"] and manager_group:
-                                msg = "⚠️【主管業績警示(手動補發)】\n" + "\n".join(res["warnings"])
-                                line_notifier.send_line_message(manager_group, msg)
-                            line_notifier.send_line_message(admin_id, "✅ 業績警示處理完畢。(已發送過的主管不會重複洗版)")
+                            passed_list = res.get("manager_passed", [])
+                            warn_list = res.get("manager_warnings", [])
+                            
+                            if (passed_list or warn_list) and manager_group:
+                                # 組合為單一訊息：標題 -> 達標名單 -> 未達標名單
+                                msg_lines = ["📊【業績狀態回報】"]
+                                if passed_list: msg_lines.extend(passed_list)
+                                if warn_list: msg_lines.extend(warn_list)
+                                
+                                line_notifier.send_line_message(manager_group, "\n".join(msg_lines))
+                            line_notifier.send_line_message(admin_id, "✅ 業績狀態處理完畢。(已發送過的不會重複洗版)")
 
                         elif text == "補發賀報":
                             res = tasks.task_check_performance(bot, mode="congrats")
-                            if (res.get("congrats") or res.get("big_congrats")) and staff_group:
-                                congrats_list = res.get("big_congrats", []) + res.get("congrats", [])
-                                msg = "🏆【富邦之星賀報(手動補發)】\n" + "\n".join(congrats_list)
+                            congrats_list = res.get("congrats", [])
+                            
+                            if congrats_list and staff_group:
+                                msg = "🏆【富邦之星賀報】\n" + "\n".join(congrats_list)
                                 line_notifier.send_line_message(staff_group, msg)
+                                
+                                # 手動補發也順便補發圖片！
+                                base_url = request.host_url.replace("http://", "https://").rstrip('/')
+                                all_heroes = res.get("big_congrats_raw", []) + res.get("congrats_raw", [])
+                                for hero in all_heroes:
+                                    filename = generate_local_congrats(hero["name"], hero["fyc"])
+                                    if filename:
+                                        image_url = f"{base_url}/images/{filename}"
+                                        cheer_msg = f"恭喜 {hero['name']} 達成佳績！🔥"
+                                        line_notifier.send_line_image(staff_group, image_url, text_message=cheer_msg)
+                                        
                             line_notifier.send_line_message(admin_id, "✅ 賀報處理完畢。(已發送過的人員不會重複洗版)")
 
                         elif text == "補發薪資":
                             res = tasks.task_salary_top10(bot)
                             if res and staff_group:
-                                msg = "💰【本年度所得累計 Top 10 (手動補發)】\n"
+                                msg = "💰【本年度所得累計 Top 10 】\n"
                                 for i, val in enumerate(res):
                                     msg += f"第 {i+1} 名: {val:,} 元\n"
                                 line_notifier.send_line_message(staff_group, msg)
@@ -146,7 +165,7 @@ def callback():
                         elif text == "補發年終":
                             res = tasks.task_yearly_bonus(bot)
                             if res and staff_group:
-                                msg = "📊【本月年度核實業績(手動補發)】\n" + "\n".join(res)
+                                msg = "📊【本月年度核實業績】\n" + "\n".join(res)
                                 line_notifier.send_line_message(staff_group, msg)
                             line_notifier.send_line_message(admin_id, "✅ 年終核實報表發送完畢。")
 
@@ -217,24 +236,36 @@ def run_master_cron():
     if hour == 12:
         if weekday in [0, 4]:
             res = tasks.task_check_performance(bot, mode="warning")
-            if res["warnings"] and manager_group:
-                msg = "⚠️【主管業績警示】\n" + "\n".join(res["warnings"])
-                line_notifier.send_line_message(manager_group, msg)
-            report_log.append("執行週一/五主管業績警示")
+            passed_list = res.get("manager_passed", [])
+            warn_list = res.get("manager_warnings", [])
+            
+            if (passed_list or warn_list) and manager_group:
+                # 組合為單一訊息：標題 -> 達標名單 -> 未達標名單
+                msg_lines = ["📊【單位業績狀態回報】"]
+                if passed_list: msg_lines.extend(passed_list)
+                if warn_list: msg_lines.extend(warn_list)
+                
+                line_notifier.send_line_message(manager_group, "\n".join(msg_lines))
+            report_log.append("執行週一/五業績狀態回報")
 
         if weekday == 2:
             res = tasks.task_check_performance(bot, mode="congrats")
-            if (res.get("congrats_raw") or res.get("big_congrats_raw")) and staff_group:
+            congrats_list = res.get("congrats", [])
+            
+            if congrats_list and staff_group:
                 # 1. 發送總表文字
-                congrats_list = res.get("big_congrats", []) + res.get("congrats", [])
-                msg = "🏆【本週富邦之星賀報】\n" + "\n".join(congrats_list)
+                msg = "🏆【富邦之星賀報】\n" + "\n".join(congrats_list)
                 line_notifier.send_line_message(staff_group, msg)
                 
-                # 2. 針對每個人產生圖片並發送 (現在 image_maker 直接回傳網址了)
+                # 自動取得目前的基礎網址 (強制轉 https 防止 ngrok/Cloud Run 剝除憑證)
+                base_url = request.host_url.replace("http://", "https://").rstrip('/')
+                
+                # 2. 針對每個人產生圖片並發送
                 all_heroes = res.get("big_congrats_raw", []) + res.get("congrats_raw", [])
                 for hero in all_heroes:
-                    image_url = generate_local_congrats(hero["name"], hero["fyc"])
-                    if image_url:
+                    filename = generate_local_congrats(hero["name"], hero["fyc"])
+                    if filename:
+                        image_url = f"{base_url}/images/{filename}"
                         cheer_msg = f"恭喜 {hero['name']} 達成佳績！🔥"
                         line_notifier.send_line_image(staff_group, image_url, text_message=cheer_msg)
                 

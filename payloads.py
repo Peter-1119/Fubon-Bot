@@ -1,8 +1,6 @@
-# payloads.py
 import json
 import urllib.parse
 import re
-from datetime import datetime
 from config import get_dynamic_dates
 
 def get_dynamic_work_month(bot):
@@ -149,4 +147,12 @@ def get_long_term_performance_params():
         "func": "Query",
         "TagId": "ListPage",
         "Target": "#MainPart > div[main=01] #ListPage"
+    }
+    
+def get_personal_list_params():
+    """獲取薪資名單用的下拉選單觸發參數 (精簡版)"""
+    return {
+        "Unit3": "TP097-0000",
+        "Unit4": "",
+        "target": "Agent"
     }

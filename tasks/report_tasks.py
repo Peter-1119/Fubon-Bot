@@ -19,7 +19,6 @@ def save_memory(data):
 def task_check_performance(bot, mode="all"):
     """Task 1, 2, 3: 績效邏輯優化與記憶過濾"""
     html_string = bot.fetch_api_html("/SAVLife/Item0028/Query", payloads.get_performance_params(bot))
-    
     table_data = extract_table_data(html_string, target_class='report-table')
     
     memory = get_memory()
@@ -27,7 +26,13 @@ def task_check_performance(bot, mode="all"):
     if memory.get("month") != current_month:
         memory = {"month": current_month, "sent_names": []} # 換月自動清空紀錄
         
-    res = {"warnings": [], "congrats": [], "big_congrats": [], "congrats_raw": [], "big_congrats_raw": []}
+    res = {
+        "manager_passed": [], 
+        "manager_warnings": [], 
+        "congrats": [], 
+        "congrats_raw": [], 
+        "big_congrats_raw": []
+    }
 
     for row in table_data:
         if len(row) < 11: continue
@@ -40,25 +45,35 @@ def task_check_performance(bot, mode="all"):
             continue
 
         if name == supervisor:
-            # Task 1: 主管警告 (加入記憶過濾，每月只警告一次)
-            if mode in ["all", "warning"] and perf_val < 30000:
-                mem_key = f"{name}_warning"
-                if mem_key not in memory["sent_names"]:
-                    res["warnings"].append(f"⚠️ 主管 {name} 累積業績 {perf_val:,} 元 (未達3萬)")
-                    memory["sent_names"].append(mem_key)
+            # Task 1: 單位狀態 (主管) - 區分達標與未達標
+            if mode in ["all", "warning"]:
+                if perf_val >= 30000:
+                    mem_key = f"{name}_mgr_pass"
+                    if mem_key not in memory["sent_names"]:
+                        # 達標：綠色勾勾，拿掉「主管」字眼
+                        res["manager_passed"].append(f"✅ {name} 累積業績 {perf_val:,} 元")
+                        memory["sent_names"].append(mem_key)
+                else:
+                    mem_key = f"{name}_mgr_warn"
+                    if mem_key not in memory["sent_names"]:
+                        # 未達標：警告符號
+                        res["manager_warnings"].append(f"⚠️ {name} 累積業績 {perf_val:,} 元 (未達3萬)")
+                        memory["sent_names"].append(mem_key)
         else:
-            # Task 2 & 3: 職員賀報 (記憶過濾)
+            # Task 2 & 3: 職員賀報 (換成 ㊗️ 與換行格式)
             if mode in ["all", "congrats"]:
                 if perf_val >= 100000:
                     mem_key = f"{name}_10w"
                     if mem_key not in memory["sent_names"]:
-                        res["big_congrats"].append(f"🎉 大賀報！恭喜 {name} 突破 10 萬大關！累積：{perf_val:,}")
+                        # 10萬大關專屬文字
+                        res["congrats"].append(f"㊗️ {name} 突破 10 萬大關！\n累積：{perf_val:,}")
                         res["big_congrats_raw"].append({"name": name, "fyc": perf_val})
                         memory["sent_names"].append(mem_key)
                 elif perf_val >= 30000:
                     mem_key = f"{name}_3w"
                     if mem_key not in memory["sent_names"]:
-                        res["congrats"].append(f"🎊 小賀報！恭喜 {name} 達成富邦之星(3萬)！累積：{perf_val:,}")
+                        # 3萬富邦之星文字
+                        res["congrats"].append(f"㊗️ {name} 達成富邦之星！\n累積：{perf_val:,}")
                         res["congrats_raw"].append({"name": name, "fyc": perf_val})
                         memory["sent_names"].append(mem_key)
 
@@ -96,19 +111,18 @@ def task_salary_top10(bot):
     html_string_yearly = bot.fetch_api_html("/SAVLife/Item0272/FYCBonusInfo", payloads.get_yearly_bonus_params())
     table_data_yearly = extract_table_data(html_string_yearly, target_class='report-table')
     
-    valid_staff_names = set() # 使用 Set 集合，尋找速度最快
+    valid_staff_names = set() 
     for row in table_data_yearly:
         if len(row) > 11:
-            # 根據你先前的 log，年終報表的姓名在 index 4 (例如: '張李佳禾')
             name = row[4].strip() 
             valid_staff_names.add(name)
             
     print(f"[系統] 成功建立正職白名單，共 {len(valid_staff_names)} 人。")
     if not valid_staff_names:
-        return [] # 如果年終表抓不到人，提早結束避免浪費時間
+        return [] 
 
     # ==========================================
-    # 步驟二：取得「薪資系統」的所有人員名單 (包含兼職 41人)
+    # 步驟二：取得「薪資系統」的所有人員名單
     # ==========================================
     raw_str = bot.fetch_api_raw_string("/SAVLife/Salary0001/InitUnitList", payloads.get_personal_list_params())
     roster = parse_agent_list(raw_str)
@@ -116,21 +130,38 @@ def task_salary_top10(bot):
     salaries = []
     
     # ==========================================
+    # 🌟 核心修正：動態推算「最近一次發薪日 (25號)」
+    # ==========================================
+    now = datetime.now()
+    target_year = now.year
+    target_month = now.month
+    
+    # 如果今天還沒過 25 號，就往前推一個月
+    if now.day < 25:
+        target_month -= 1
+        # 如果當前是 1 月，往前推會變成 0，要修正為去年的 12 月
+        if target_month == 0:
+            target_month = 12
+            target_year -= 1
+
+    roc_year = target_year - 1911
+    query_date = f"{roc_year}/{target_month:02d}/25"
+    print(f"[系統] 薪資查詢目標日期自動校正為: {query_date}")
+    
+    # ==========================================
     # 步驟三：交叉比對與抓取薪資
     # ==========================================
     for agent_id, agent_name in roster.items():
-        # 【核心過濾邏輯】如果這個人不在年終報表裡，直接跳過！
         if agent_name.strip() not in valid_staff_names:
             print(f"  -> 略過非正職/無考核人員: {agent_name}")
             continue
             
-        # 通過過濾，開始抓取薪資
-        params = payloads.get_salary_params(agent_id, agent_name)
+        params = payloads.get_salary_params(agent_id, query_date)
         html_string = bot.fetch_api_html("/SAVLife/Salary0001/Query", params)
         
-        # 薪資表是第 5 個 table (index=4)
         table_data = extract_table_data(html_string, target_class='report-table', table_index=4)
-        if table_data:
+        
+        if table_data and len(table_data) > 0 and len(table_data[0]) > 1:
             salary_str = table_data[0][1].replace(',', '')
             if salary_str.isdigit():
                 salaries.append(int(salary_str))
