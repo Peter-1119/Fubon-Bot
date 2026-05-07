@@ -95,9 +95,13 @@ def task_attendance(bot):
     
     absent_list = []
     for row in table_data:
-        # row[5] 為姓名, row[14] 為出勤紀錄
-        if len(row) > 14 and not row[14].strip():
-            absent_list.append(row[5])
+        # 確保陣列長度足夠，出席時間在 index 10
+        if len(row) > 10:
+            name = row[5].strip()
+            attend_time = row[10].strip()
+            
+            if not attend_time or attend_time > "08:55":
+                absent_list.append(name)
             
     return absent_list
 

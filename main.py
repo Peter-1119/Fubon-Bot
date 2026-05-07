@@ -142,14 +142,12 @@ def callback():
                                 line_notifier.send_line_message(staff_group, msg)
                                 
                                 # 手動補發也順便補發圖片！
-                                base_url = request.host_url.replace("http://", "https://").rstrip('/')
                                 all_heroes = res.get("big_congrats_raw", []) + res.get("congrats_raw", [])
                                 for hero in all_heroes:
-                                    filename = generate_local_congrats(hero["name"], hero["fyc"])
-                                    if filename:
-                                        image_url = f"{base_url}/images/{filename}"
+                                    final_image_url = generate_local_congrats(hero["name"], hero["fyc"])
+                                    if final_image_url:
                                         cheer_msg = f"恭喜 {hero['name']} 達成佳績！🔥"
-                                        line_notifier.send_line_image(staff_group, image_url, text_message=cheer_msg)
+                                        line_notifier.send_line_image(staff_group, final_image_url, text_message=cheer_msg)
                                         
                             line_notifier.send_line_message(admin_id, "✅ 賀報處理完畢。(已發送過的人員不會重複洗版)")
 
@@ -263,11 +261,12 @@ def run_master_cron():
                 # 2. 針對每個人產生圖片並發送
                 all_heroes = res.get("big_congrats_raw", []) + res.get("congrats_raw", [])
                 for hero in all_heroes:
-                    filename = generate_local_congrats(hero["name"], hero["fyc"])
-                    if filename:
-                        image_url = f"{base_url}/images/{filename}"
+                    final_image_url = generate_local_congrats(hero["name"], hero["fyc"])
+                    
+                    if final_image_url:
+                        print(f"[系統] 準備發送圖片網址: {final_image_url}")
                         cheer_msg = f"恭喜 {hero['name']} 達成佳績！🔥"
-                        line_notifier.send_line_image(staff_group, image_url, text_message=cheer_msg)
+                        line_notifier.send_line_image(staff_group, final_image_url, text_message=cheer_msg)
                 
                 report_log.append("執行週三職員賀報 (含圖片推播)")
 
