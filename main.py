@@ -152,7 +152,7 @@ def callback():
                             line_notifier.send_line_message(admin_id, "✅ 賀報處理完畢。(已發送過的人員不會重複洗版)")
 
                         elif text == "補發薪資":
-                            res = tasks.task_salary_top10(bot)
+                            res = tasks.task_salary(bot)
                             if res and staff_group:
                                 msg = "💰【本年度所得累計 Top 10 】\n"
                                 for i, val in enumerate(res):
@@ -202,7 +202,7 @@ def api_attendance():
 
 @app.route('/run/salary', methods=['GET'])
 def api_salary():
-    res = tasks.task_salary_top10(get_bot())
+    res = tasks.task_salary(get_bot())
     return jsonify({"status": "success", "top10_salaries": res})
 
 @app.route('/run/yearly', methods=['GET'])
@@ -278,7 +278,7 @@ def run_master_cron():
             report_log.append("執行 15 號年終核實")
 
         if day == 25:
-            res = tasks.task_salary_top10(bot)
+            res = tasks.task_salary(bot)
             if res and staff_group:
                 msg = "💰【本年度所得累計 Top 10】\n"
                 for i, val in enumerate(res):

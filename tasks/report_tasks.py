@@ -105,7 +105,7 @@ def task_attendance(bot):
             
     return absent_list
 
-def task_salary_top10(bot):
+def task_salary(bot):
     """Task 5: 薪資前十名 (使用「年終報表」作為正職白名單進行過濾)"""
     print("[系統] 開始執行 Task 5: 薪資排行榜...")
 
@@ -171,10 +171,10 @@ def task_salary_top10(bot):
                 salaries.append(int(salary_str))
 
     # ==========================================
-    # 步驟四：排序並回傳前 10 名
+    # 步驟四：排序並回傳全部
     # ==========================================
     salaries.sort(reverse=True)
-    return salaries[:10]
+    return salaries
 
 def task_yearly_bonus(bot):
     """Task 6: 年終核實"""
