@@ -6,8 +6,9 @@ from core.parsers import extract_table_data, parse_agent_list
 from core.storage import read_json, write_json
 
 # --- 記憶體存取小工具 ---
+# 改版後的結構： {"last_fyc_map": {"姓名": 12345}, "last_check_date": "20260603"}
 HISTORY_FILE = "congrats_history.json"
-DEFAULT_HISTORY = {"month": "", "sent_names": []}
+DEFAULT_HISTORY = {"last_fyc_map": {}, "last_check_date": ""}
 
 def get_memory():
     return read_json(HISTORY_FILE, DEFAULT_HISTORY)
@@ -17,22 +18,30 @@ def save_memory(data):
 # ------------------------
 
 def task_check_performance(bot, mode="all"):
-    """Task 1, 2, 3: 績效邏輯優化與記憶過濾"""
+    """
+    績效檢查核心邏輯
+    mode="daily_congrats": 偵測與昨日的差額，產生賀報
+    mode="weekly_status": 週一、五顯示達標/未達標狀態
+    mode="all": 兩者皆執行 (預留)
+    """
     html_string = bot.fetch_api_html("/SAVLife/Item0028/Query", payloads.get_performance_params(bot))
     table_data = extract_table_data(html_string, target_class='report-table')
     
     memory = get_memory()
-    current_month = config.get_dynamic_dates()["TODAY_YYYYMMDD"][:6] 
-    if memory.get("month") != current_month:
-        memory = {"month": current_month, "sent_names": []} # 換月自動清空紀錄
-        
+    now = datetime.now()
+    today_str = now.strftime("%Y%m%d")
+    is_26th = (now.day == 26)
+    
     res = {
         "manager_passed": [], 
         "manager_warnings": [], 
-        "congrats": [], 
-        "congrats_raw": [], 
-        "big_congrats_raw": []
+        "staff_passed": [],
+        "staff_warnings": [],
+        "congrats_raw": []  # 用於發送賀報圖片的人員名單
     }
+
+    last_fyc_map = memory.get("last_fyc_map", {})
+    new_fyc_map = {} # 用於更新記憶體
 
     for row in table_data:
         if len(row) < 11: continue
@@ -40,44 +49,53 @@ def task_check_performance(bot, mode="all"):
         name = row[2].replace("明細", "").strip()
         supervisor = row[3].strip()
         try:
-            perf_val = int(row[10].replace(',', ''))
+            today_cumulative_fyc = int(row[10].replace(',', ''))
+            today_fyc = int(row[6].replace(',', ''))
         except:
             continue
+        
+        new_fyc_map[name] = today_cumulative_fyc
+        
+        # --- 邏輯 A: 每日賀報 (差額偵測) ---
+        if mode in ["all", "daily_congrats"]:
+            last_cumulative = last_fyc_map.get(name)
+            
+            diff = 0
+            if is_26th and memory.get("last_check_date") != today_str:
+                # 26 號當天第一次執行：直接看累計是否大於 0
+                if today_cumulative_fyc > 0:
+                    diff = today_cumulative_fyc
+            elif last_cumulative is None:
+                # 第一次執行且非 26 號：差額取「當日 FYC」(col[6])
+                diff = today_fyc
+            else:
+                # 一般日：與上次紀錄的「累計 FYC」比較
+                diff = today_cumulative_fyc - last_cumulative
+                
+            if diff > 0:
+                res["congrats_raw"].append({
+                    "name": name, 
+                    "diff": diff, 
+                    "total": today_cumulative_fyc
+                })
 
-        if name == supervisor:
-            # Task 1: 單位狀態 (主管) - 區分達標與未達標
-            if mode in ["all", "warning"]:
-                if perf_val >= 30000:
-                    mem_key = f"{name}_mgr_pass"
-                    if mem_key not in memory["sent_names"]:
-                        # 達標：綠色勾勾，拿掉「主管」字眼
-                        res["manager_passed"].append(f"✅ {name} 累積業績 {perf_val:,} 元")
-                        memory["sent_names"].append(mem_key)
+        # --- 邏輯 B: 每週狀態 (達標 30000 門檻) ---
+        if mode in ["all", "weekly_status"]:
+            status_line = f"• {name} 累積：{today_cumulative_fyc:,}"
+            if name == supervisor:
+                if today_cumulative_fyc >= 30000:
+                    res["manager_passed"].append(f"✅ {name} 累積：{today_cumulative_fyc:,}")
                 else:
-                    mem_key = f"{name}_mgr_warn"
-                    if mem_key not in memory["sent_names"]:
-                        # 未達標：警告符號
-                        res["manager_warnings"].append(f"⚠️ {name} 累積業績 {perf_val:,} 元 (未達3萬)")
-                        memory["sent_names"].append(mem_key)
-        else:
-            # Task 2 & 3: 職員賀報 (換成 ㊗️ 與換行格式)
-            if mode in ["all", "congrats"]:
-                if perf_val >= 100000:
-                    mem_key = f"{name}_10w"
-                    if mem_key not in memory["sent_names"]:
-                        # 10萬大關專屬文字
-                        res["congrats"].append(f"㊗️ {name} 突破 10 萬大關！\n累積：{perf_val:,}")
-                        res["big_congrats_raw"].append({"name": name, "fyc": perf_val})
-                        memory["sent_names"].append(mem_key)
-                elif perf_val >= 30000:
-                    mem_key = f"{name}_3w"
-                    if mem_key not in memory["sent_names"]:
-                        # 3萬富邦之星文字
-                        res["congrats"].append(f"㊗️ {name} 達成富邦之星！\n累積：{perf_val:,}")
-                        res["congrats_raw"].append({"name": name, "fyc": perf_val})
-                        memory["sent_names"].append(mem_key)
+                    res["manager_warnings"].append(f"⚠️ {name} 累積：{today_cumulative_fyc:,} (未達3萬)")
+            else:
+                if today_cumulative_fyc >= 30000:
+                    res["staff_passed"].append(f"✅ {name} 累積：{today_cumulative_fyc:,}")
+                else:
+                    res["staff_warnings"].append(f"⚠️ {name} 累積：{today_cumulative_fyc:,} (未達3萬)")
 
-    # 不論是警告還是賀報，只要有檢查，就存回記憶體
+    # 更新記憶體 (不論 mode 為何，都保持最新的業績數字)
+    memory["last_fyc_map"] = new_fyc_map
+    memory["last_check_date"] = today_str
     save_memory(memory)
 
     return res

@@ -101,55 +101,48 @@ def callback():
                         else:
                             line_notifier.reply_line_message(reply_token, "⚠️ 格式錯誤！請輸入：更新帳密 [帳號] [密碼]")
 
-                    # ==========================================
-                    # 【新增功能】手動補發監聽 (單線程同步執行)
-                    # ==========================================
                     elif text in ["補發業績", "補發賀報", "補發薪資", "補發年終"]:
                         if user_id != admin_id:
                             line_notifier.reply_line_message(reply_token, "⛔ 權限不足，只有管理員可以執行補發。")
                             continue
                         
-                        # 先用 Reply API 快速安撫使用者
                         line_notifier.reply_line_message(reply_token, f"⏳ 收到指令：【{text}】\n系統正在為您抓取最新資料，請稍候...")
 
-                        # 同步開始爬蟲 (會卡住伺服器，直到跑完才回傳 200 OK)
                         bot = get_bot()
-                        if not bot: continue # 密碼錯誤已在 get_bot 內通報，直接結束
+                        if not bot: continue 
 
                         manager_group = settings.get("manager_group")
                         staff_group = settings.get("all_staff_group")
 
                         if text == "補發業績":
-                            res = tasks.task_check_performance(bot, mode="warning")
-                            passed_list = res.get("manager_passed", [])
-                            warn_list = res.get("manager_warnings", [])
-                            
-                            if (passed_list or warn_list) and manager_group:
-                                # 組合為單一訊息：標題 -> 達標名單 -> 未達標名單
-                                msg_lines = ["📊【業績狀態回報】"]
-                                if passed_list: msg_lines.extend(passed_list)
-                                if warn_list: msg_lines.extend(warn_list)
-                                
-                                line_notifier.send_line_message(manager_group, "\n".join(msg_lines))
-                            line_notifier.send_line_message(admin_id, "✅ 業績狀態處理完畢。(已發送過的不會重複洗版)")
+                            res = tasks.task_check_performance(bot, mode="weekly_status")
+                            if manager_group:
+                                mgr_msg = "📊【主管業績狀態回報】\n"
+                                if res["manager_passed"]: mgr_msg += "\n".join(res["manager_passed"]) + "\n"
+                                if res["manager_warnings"]: mgr_msg += "\n" + "\n".join(res["manager_warnings"])
+                                line_notifier.send_line_message(manager_group, mgr_msg)
+                            if staff_group:
+                                staff_msg = "📊【職員業績狀態回報】\n"
+                                if res["staff_passed"]: staff_msg += "\n".join(res["staff_passed"]) + "\n"
+                                if res["staff_warnings"]: staff_msg += "\n" + "\n".join(res["staff_warnings"])
+                                line_notifier.send_line_message(staff_group, staff_msg)
+                            line_notifier.send_line_message(admin_id, "✅ 業績狀態處理完畢。")
 
                         elif text == "補發賀報":
-                            res = tasks.task_check_performance(bot, mode="congrats")
-                            congrats_list = res.get("congrats", [])
-                            
-                            if congrats_list and staff_group:
-                                msg = "🏆【富邦之星賀報】\n" + "\n".join(congrats_list)
-                                line_notifier.send_line_message(staff_group, msg)
-                                
-                                # 手動補發也順便補發圖片！
-                                all_heroes = res.get("big_congrats_raw", []) + res.get("congrats_raw", [])
-                                for hero in all_heroes:
-                                    final_image_url = generate_local_congrats(hero["name"], hero["fyc"])
-                                    if final_image_url:
-                                        cheer_msg = f"恭喜 {hero['name']} 達成佳績！🔥"
-                                        line_notifier.send_line_image(staff_group, final_image_url, text_message=cheer_msg)
-                                        
-                            line_notifier.send_line_message(admin_id, "✅ 賀報處理完畢。(已發送過的人員不會重複洗版)")
+                            res = tasks.task_check_performance(bot, mode="daily_congrats")
+                            congrats_raw = res.get("congrats_raw", [])
+                            if congrats_raw:
+                                if staff_group:
+                                    for hero in congrats_raw:
+                                        final_image_url = generate_local_congrats(hero["name"], hero["diff"])
+                                        if final_image_url:
+                                            cheer_msg = f"恭喜 {hero['name']} 業績成長 {hero['diff']:,}！🔥\n目前累計：{hero['total']:,}"
+                                            line_notifier.send_line_image(staff_group, final_image_url, text_message=cheer_msg)
+                                else:
+                                    line_notifier.send_line_message(admin_id, "⚠️ 尚未設定大群組，無法發送賀報圖片。")
+                            else:
+                                line_notifier.send_line_message(admin_id, "ℹ️ 目前暫無新的業績變動。")
+                            line_notifier.send_line_message(admin_id, "✅ 賀報處理完畢。")
 
                         elif text == "補發薪資":
                             res = tasks.task_salary(bot)
@@ -170,12 +163,9 @@ def callback():
                     elif text in ["設定大群組", "設定主管群"]:
                         line_notifier.reply_line_message(reply_token, "⚠️ 請把我邀請進群組後，在『群組內』輸入此指令喔！")
                         
-                # 狀況 B：客戶在【群組】內進行綁定
                 elif source_type == "group":
                     if text in ["設定大群組", "設定主管群"]:
-                        if user_id != admin_id:
-                            continue
-
+                        if user_id != admin_id: continue
                         if text == "設定大群組":
                             settings["all_staff_group"] = group_id
                             save_group_settings(settings)
@@ -187,7 +177,6 @@ def callback():
                             
     except Exception as e:
         print(f"Webhook 處理失敗: {e}")
-        
     return 'OK', 200
 
 @app.route('/run/performance', methods=['GET'])
@@ -213,7 +202,6 @@ def api_yearly():
 @app.route('/run/all_tasks', methods=['GET'])
 def run_master_cron():
     now = datetime.now()
-    
     test_hour = request.args.get('hour')
     test_weekday = request.args.get('weekday')
     test_day = request.args.get('day')
@@ -222,9 +210,10 @@ def run_master_cron():
     weekday = int(test_weekday) if test_weekday is not None else now.weekday()
     day = int(test_day) if test_day is not None else now.day
     
+    print(f"[排程測試] 觸發時間: {hour}點, 星期{weekday}, {day}號")
+    
     bot = get_bot()
-    if not bot:
-        return jsonify({"status": "failed", "message": "Bot登入失敗或尚未設定帳密，已通知管理員。"})
+    if not bot: return jsonify({"status": "failed", "message": "Bot登入失敗"})
 
     report_log = []
     settings = get_group_settings()
@@ -232,69 +221,86 @@ def run_master_cron():
     staff_group = settings.get("all_staff_group")
 
     if hour == 12:
-        if weekday in [0, 4]:
-            res = tasks.task_check_performance(bot, mode="warning")
-            passed_list = res.get("manager_passed", [])
-            warn_list = res.get("manager_warnings", [])
-            
-            if (passed_list or warn_list) and manager_group:
-                # 組合為單一訊息：標題 -> 達標名單 -> 未達標名單
-                msg_lines = ["📊【單位業績狀態回報】"]
-                if passed_list: msg_lines.extend(passed_list)
-                if warn_list: msg_lines.extend(warn_list)
-                
-                line_notifier.send_line_message(manager_group, "\n".join(msg_lines))
-            report_log.append("執行週一/五業績狀態回報")
-
-        if weekday == 2:
-            res = tasks.task_check_performance(bot, mode="congrats")
-            congrats_list = res.get("congrats", [])
-            
-            if congrats_list and staff_group:
-                # 1. 發送總表文字
-                msg = "🏆【富邦之星賀報】\n" + "\n".join(congrats_list)
-                line_notifier.send_line_message(staff_group, msg)
-                
-                # 自動取得目前的基礎網址 (強制轉 https 防止 ngrok/Cloud Run 剝除憑證)
-                base_url = request.host_url.replace("http://", "https://").rstrip('/')
-                
-                # 2. 針對每個人產生圖片並發送
-                all_heroes = res.get("big_congrats_raw", []) + res.get("congrats_raw", [])
-                for hero in all_heroes:
-                    final_image_url = generate_local_congrats(hero["name"], hero["fyc"])
-                    
+        report_log.append("進入 12 點主排程")
+        
+        # 1. 每日賀報
+        res_daily = tasks.task_check_performance(bot, mode="daily_congrats")
+        congrats_raw = res_daily.get("congrats_raw", [])
+        if congrats_raw:
+            if staff_group:
+                for hero in congrats_raw:
+                    final_image_url = generate_local_congrats(hero["name"], hero["diff"])
                     if final_image_url:
-                        print(f"[系統] 準備發送圖片網址: {final_image_url}")
-                        cheer_msg = f"恭喜 {hero['name']} 達成佳績！🔥"
+                        cheer_msg = f"恭喜 {hero['name']} 業績成長 {hero['diff']:,}！🔥\n目前累計：{hero['total']:,}"
                         line_notifier.send_line_image(staff_group, final_image_url, text_message=cheer_msg)
-                
-                report_log.append("執行週三職員賀報 (含圖片推播)")
+                report_log.append(f"✅ 已發送 {len(congrats_raw)} 位人員賀報")
+            else:
+                report_log.append("⚠️ 有業績變動但未設定大群組")
+        else:
+            report_log.append("ℹ️ 今日無業績變動")
 
+        # 2. 週一/五狀態
+        if weekday in [0, 4]:
+            res_weekly = tasks.task_check_performance(bot, mode="weekly_status")
+            if manager_group:
+                mgr_msg = "📊【主管業績狀態回報】\n"
+                if res_weekly["manager_passed"]: mgr_msg += "\n".join(res_weekly["manager_passed"]) + "\n"
+                if res_weekly["manager_warnings"]: mgr_msg += "\n" + "\n".join(res_weekly["manager_warnings"])
+                line_notifier.send_line_message(manager_group, mgr_msg)
+            if staff_group:
+                staff_msg = "📊【職員業績狀態回報】\n"
+                if res_weekly["staff_passed"]: staff_msg += "\n".join(res_weekly["staff_passed"]) + "\n"
+                if res_weekly["staff_warnings"]: staff_msg += "\n" + "\n".join(res_weekly["staff_warnings"])
+                line_notifier.send_line_message(staff_group, staff_msg)
+            report_log.append("✅ 已發送週一/五狀態回報")
+
+        # 3. 15號年終
         if day == 15:
             res = tasks.task_yearly_bonus(bot)
             if res and staff_group:
-                msg = "📊【本月年度核實業績】\n" + "\n".join(res)
-                line_notifier.send_line_message(staff_group, msg)
-            report_log.append("執行 15 號年終核實")
+                line_notifier.send_line_message(staff_group, "📊【本月年度核實業績】\n" + "\n".join(res))
+            report_log.append("✅ 已發送 15 號年終核實")
 
+        # 4. 25號薪資
         if day == 25:
             res = tasks.task_salary(bot)
             if res and staff_group:
                 msg = "💰【本年度所得累計 Top 10】\n"
-                for i, val in enumerate(res):
-                    msg += f"第 {i+1} 名: {val:,} 元\n"
+                for i, val in enumerate(res): msg += f"第 {i+1} 名: {val:,} 元\n"
                 line_notifier.send_line_message(staff_group, msg)
-            report_log.append("執行 25 號薪資排行")
+            report_log.append("✅ 已發送 25 號薪資排行")
 
-    if hour == 17:
+    elif hour == 17:
+        report_log.append("進入 17 點主排程")
         if weekday <= 4:
             res = tasks.task_attendance(bot)
             if res and staff_group:
-                msg = "📅【今日出缺席未打卡名單】\n" + "\n".join(res)
-                line_notifier.send_line_message(staff_group, msg)
-            report_log.append("執行平日出缺席檢查")
+                line_notifier.send_line_message(staff_group, "📅【今日出缺席未打卡名單】\n" + "\n".join(res))
+            report_log.append("✅ 已完成出缺席檢查")
+    else:
+        report_log.append(f"非預定觸發時段 (目前設定為 {hour} 點)")
 
-    return jsonify({"status": "cron_finished", "test_time": {"hour": hour, "weekday": weekday, "day": day}, "logs": report_log})
+    return jsonify({"status": "cron_finished", "logs": report_log, "debug": {"hour": hour, "weekday": weekday, "day": day}})
+
+# --- 新增測試用路由 ---
+@app.route('/test/congrats', methods=['GET'])
+def test_congrats():
+    name = request.args.get('name', '李俊宏') # 預設測試一個資料夾有的名字
+    amount = int(request.args.get('amount', 88888))
+    
+    print(f"[測試] 開始測試製圖: {name}, 金額: {amount}")
+    image_url = generate_local_congrats(name, amount)
+    
+    if image_url:
+        return f"<h3>製圖成功！</h3><p>網址: {image_url}</p><img src='{image_url}' style='max-width:800px;'>"
+    else:
+        return "<h3>製圖失敗</h3><p>請檢查終端機 Log。</p>"
+
+@app.route('/images/<filename>')
+def serve_image(filename):
+    """讓本地瀏覽器可以讀取 temp 資料夾下的圖片"""
+    temp_dir = tempfile.gettempdir()
+    return send_file(os.path.join(temp_dir, filename))
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))

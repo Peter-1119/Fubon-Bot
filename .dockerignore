@@ -1,0 +1,32 @@
+# Ignore local photos
+templates/photos/
+
+# Ignore local output/previews
+preview_output/
+goals/
+TestCode/
+
+# Ignore local runtime states
+fubon_cookies.pkl
+congrats_history.json
+group_settings.json
+
+# Ignore credentials & configurations
+.env
+
+# Ignore git
+.git
+.gitignore
+
+# Ignore IDE configs
+.vscode/
+
+# Ignore Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore local virtual environment
+venv/
+.venv/

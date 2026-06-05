@@ -17,6 +17,9 @@ __pycache__/
 env/
 venv/
 ENV/
+TestCode/
+goals/
+templates/photos
 
 # --- Docker 相關 ---
 .docker/
